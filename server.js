@@ -205,8 +205,8 @@ router.delete('/boats/:id', function(req, res){
 
 /* Oauth/JWT Routes and functions*/
   
-const client_id = '59733396940-3rk1q1mquia5av6f7ssq517qqotq4rnc.apps.googleusercontent.com'
-const client_sec = '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';
+const client_id = '59733396940-3rk1q1mquia5av6f7ssq517qqotq4rnc.apps.googleusercontent.com';
+const client_sec = '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';
   
 
 const oauth2Client = new google.auth.OAuth2(
@@ -259,7 +259,7 @@ router.get('/oauth', async function(req, res){
     if (req.url.startsWith('/oauth')) {
         // Handle the OAuth 2.0 server response
         let q = url.parse(req.url, true).query;
-
+        console.log(q);
         // Get access and refresh tokens (if access_type is offline)
         let { tokens } = await oauth2Client.getToken(q.code);
         let html = '<h1>Here is your Google JWT!</h1>' +
