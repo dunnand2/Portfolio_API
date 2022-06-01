@@ -52,16 +52,10 @@ function post_user(firstName, lastName, googleID, url) {
     });
 }
 
-function check_user_exists(googleID){
-    const key = datastore.key([USER, parseInt(googleID, 10)]);
-    const user_url = url + '/users'
-    return datastore.get(key).then((entity) => {
-        if (entity[0] === undefined || entity[0] === null) {
-            return false;
-        } else {
-            return true;
-        }
-    });
+async function get_user(googleID){
+    const query = datastore.createQuery(USER).filter('googleID', '=', googleID);
+    const users = await datastore.runQuery(query);
+    return users;
 }
 
 
@@ -123,9 +117,9 @@ router.get('/oauth', async function(req, res){
             const firstName = payload['given_name'];
             const lastName = payload['family_name'];
             const url = getURL(req);
-            check_user_exists(googleID).then((exists) => {
-                if(!exists) {
-                post_user(firstName, lastName, googleID, url)
+            get_user(googleID).then((user) => {
+                if(!user[0] === undefined || user[0].length == 0) {
+                    post_user(firstName, lastName, googleID, url)
                     .then(user => console.log(user));
                 }
             })
