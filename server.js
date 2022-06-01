@@ -3,13 +3,13 @@ const app = express();
 const router = express.Router();
 
 const boats = require('./routes/boats');
-const oauth = require('./routes/oauth');
+const users = require('./routes/users');
 
 app.enable('trust proxy');
 
 
 app.use('/boats', boats);
-app.use('/', oauth.router);
+app.use('/', users.router);
 
 
 

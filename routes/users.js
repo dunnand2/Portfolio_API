@@ -1,15 +1,15 @@
 const {google} = require('googleapis');
 const url = require('url');
-const {Datastore} = require('@google-cloud/datastore');
+const path = require('path');
 const express = require('express');
 const {OAuth2Client} = require('google-auth-library');
-
+const ds = require('../datastore');
+const datastore = ds.datastore;
 const app = express();
 const router = express.Router();
 
 app.use(express.json());
 
-/* ------------- End Controller Functions ------------- */
 
 /* Oauth/JWT Routes and functions*/
   
@@ -27,7 +27,42 @@ const scopes = [
     'https://www.googleapis.com/auth/userinfo.profile'
 ];
 
+const USER = "users";
 
+/* ------------- Begin User Model Functions ------------- */
+function getURL(req) {
+    let url = "";
+    if (req.hostname == "localhost") {
+        url = req.protocol + '://' + req.hostname + ':8080';
+    }
+    else {
+        url = req.protocol + '://' + req.hostname;
+    }
+    return url;
+}
+
+function post_user(firstName, lastName, googleID, url) {
+    var key = datastore.key([USER, parseInt(googleID,10)]);
+    const new_user = { "firstName": firstName, "lastName": lastName, "googleID": googleID};
+    return datastore.save({"key": key, "data": new_user})
+    .then(() => {
+        new_user.id = key.id;
+        new_user.self = url + '/users/' + key.id;
+        return new_user;
+    });
+}
+
+function check_user_exists(googleID){
+    const key = datastore.key([USER, parseInt(googleID, 10)]);
+    const user_url = url + '/users'
+    return datastore.get(key).then((entity) => {
+        if (entity[0] === undefined || entity[0] === null) {
+            return false;
+        } else {
+            return true;
+        }
+    });
+}
 
 
 // Generate a url that asks permissions for the Drive activity scope
@@ -62,7 +97,7 @@ async function checkToken(token) {
 }
 
 router.get('/', function(req, res){
-    res.sendFile(__dirname + '../views/index.html');
+    res.sendFile(path.join(__dirname, '../views/index.html'));
 });
 
 router.get('/oauth', async function(req, res){
@@ -70,15 +105,34 @@ router.get('/oauth', async function(req, res){
     if (req.url.startsWith('/oauth')) {
         // Handle the OAuth 2.0 server response
         let q = url.parse(req.url, true).query;
-        console.log(q);
         // Get access and refresh tokens (if access_type is offline)
         let { tokens } = await oauth2Client.getToken(q.code);
         let html = '<h1>Here is your Google JWT!</h1>' +
         '<h2>' + tokens.id_token +'</h2>';
         oauth2Client.setCredentials(tokens);
         res.send(html);
-        //checkToken(tokens.id_token);
-        checkToken(tokens.id_token);
+
+        oauth2Client.verifyIdToken({
+            idToken: tokens.id_token,
+            audience: client_id,  // Specify the CLIENT_ID of the app that accesses the backend
+            // Or, if multiple clients access the backend:
+            //[CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3]
+        }).then((ticket) => {
+            const payload = ticket.getPayload();
+            const googleID = payload['sub'];
+            const firstName = payload['given_name'];
+            const lastName = payload['family_name'];
+            const url = getURL(req);
+            check_user_exists(googleID).then((exists) => {
+                if(!exists) {
+                post_user(firstName, lastName, googleID, url)
+                    .then(user => console.log(user));
+                }
+            })
+        })
+        .catch((error) => {
+            console.error(error);
+        });
     }
 
     else {

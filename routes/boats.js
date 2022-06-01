@@ -1,9 +1,9 @@
 const {OAuth2Client} = require('google-auth-library');
 const url = require('url');
-const ds = require('../datastore');
 const express = require('express');
 const router = express.Router();
 const bodyParser = require('body-parser');
+const ds = require('../datastore');
 const datastore = ds.datastore;
 
 router.use(bodyParser.json());
@@ -117,7 +117,6 @@ router.get('/owners/:owner_id/boats', function(req, res){
 });
 
 router.post('/', function(req, res){
-    console.log("POST!");
     if(req.get('content-type') !== 'application/json'){
         res.status(415).send('Server only accepts application/json data.');
         return;
@@ -144,6 +143,7 @@ router.post('/', function(req, res){
         audience: client_id,
     }).then((ticket) => {
         const payload = ticket.getPayload();
+        console.log(payload);
         const userid = payload['sub'];
         const url = getURL(req);
         post_boat(req.body.name, req.body.type, req.body.length, req.body.public, userid, url)
