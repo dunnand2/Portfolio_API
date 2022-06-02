@@ -25,9 +25,9 @@ function getURL(req) {
     return url;
 }
 
-function post_boat(name, type, length, public, sub, url) {
+function post_boat(name, type, length, sub, url) {
     var key = datastore.key(BOAT);
-    const new_boat = { "name": name, "type": type, "length": length, "public": public, "owner": sub};
+    const new_boat = { "name": name, "type": type, "length": length, "owner": sub};
     return datastore.save({"key": key, "data": new_boat})
     .then(() => {
         new_boat.id = key.id;
@@ -41,6 +41,30 @@ function get_boats() {
     return datastore.runQuery(q).then((entities) => {
         return entities[0].map(fromDatastore);
     });
+}
+
+async function get_user_boats(req, url,  googleID){
+    const query = datastore.createQuery(BOAT).filter('owner', '=', googleID).limit(5);
+    const boat_url = url + '/boats';
+    if(Object.keys(req.query).includes("cursor")){
+        q = q.start(req.query.cursor);
+    }
+    const results = {};
+    return datastore.runQuery(query).then((entities) => {
+        results.boats = entities[0].map( function(entity) {
+            return ds.fromDatastore(entity, boat_url);
+        });
+        if(entities[1].moreResults !== ds.Datastore.NO_MORE_RESULTS ){
+            results.next = req.protocol + "://" + req.get("host") + req.baseUrl + "?cursor=" + entities[1].endCursor;
+        }
+        return results
+    });
+}
+
+async function get_user_boats_count(googleID) {
+    const query = datastore.createQuery(BOAT).select('__key__').filter('owner', '=', googleID);
+    const [keys] =  await datastore.runQuery(query);
+    return keys.length;
 }
 
 function get_boat(id, url){
@@ -68,35 +92,24 @@ router.get('/', function(req, res){
     if (req.headers.authorization) {
         token = req.headers.authorization.substring(7, req.headers.authorization.length);
     }
-     
-    oauth2Client.verifyIdToken({
+    
+    let = client.verifyIdToken({
         idToken: token,
         audience: client_id,
     }).then((ticket) => {
         const payload = ticket.getPayload();
         const owner = payload['sub'];
-        get_boats()
-        .then((boats) => {
-            let ownedBoats = []
-            for (let boat of boats) {
-                if (boat.owner == owner) {
-                    ownedBoats.push(boat);
-                }
-            }
-            res.status(200).json(ownedBoats);
-        });
+        const url = getURL(req)
+        let boats = get_user_boats(req, url, owner);
+        let count = get_user_boats_count(owner);
+        Promise.all([boats, count]).then(values => {
+            boats = values[0];
+            count = values[1];
+            boats['owned_boats'] = count;
+            res.status(200).json(boats);
+        })
     }).catch((error) => {
         console.error(error);
-        get_boats()
-        .then((boats) => {
-            let publicBoats = []
-            for (let boat of boats) {
-                if (boat.public == true) {
-                    publicBoats.push(boat);
-                }               
-            }
-            res.status(200).json(publicBoats);
-        });
     });
 
 });
@@ -126,7 +139,7 @@ router.post('/', function(req, res){
         res.status(406).send('Not Acceptable');
         return;
     }
-    if (req.body.name === undefined || req.body.type === undefined || req.body.length === undefined || req.body.public === undefined) {
+    if (req.body.name === undefined || req.body.type === undefined || req.body.length === undefined) {
         res.status(400).json({'Error': 'The request object is missing at least one of the required attributes'});
         return;
     }
@@ -146,7 +159,7 @@ router.post('/', function(req, res){
         console.log(payload);
         const userid = payload['sub'];
         const url = getURL(req);
-        post_boat(req.body.name, req.body.type, req.body.length, req.body.public, userid, url)
+        post_boat(req.body.name, req.body.type, req.body.length, userid, url)
         .then(boat => {res.status(201).json(boat)});
     }).catch((error) => {
         console.error(error);
