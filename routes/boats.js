@@ -27,7 +27,7 @@ function getURL(req) {
 
 function post_boat(name, type, length, sub, url) {
     var key = datastore.key(BOAT);
-    const new_boat = { "name": name, "type": type, "length": length, "owner": sub};
+    const new_boat = { "name": name, "type": type, "length": length, "owner": sub, loads: []};
     return datastore.save({"key": key, "data": new_boat})
     .then(() => {
         new_boat.id = key.id;
@@ -73,7 +73,7 @@ function get_boat(id, url){
         if(data[0] == undefined || data[0] == null) {
             return data[0];
         }
-            return fromDatastore(data[0], url);
+            return ds.fromDatastore(data[0], url);
         }
     );
 }
@@ -168,20 +168,20 @@ router.post('/', function(req, res){
     });
 });
 
-router.delete('/boats', function (req, res){
+router.delete('/', function (req, res){
     res.set('Accept', 'GET, POST');
     res.status(405).end();
 });
 
 
-router.delete('/boats/:id', function(req, res){
+router.delete('/:id', function(req, res){
 
     let token = false;
     if (req.headers.authorization) {
         token = req.headers.authorization.substring(7, req.headers.authorization.length);
     }
 
-    oauth2Client.verifyIdToken({
+    client.verifyIdToken({
         idToken: token,
         audience: client_id,
     }).then((ticket) => {
