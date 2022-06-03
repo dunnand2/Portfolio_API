@@ -63,7 +63,6 @@ function put_boat(name, type, length, boat_id, url, loads, owner){
     .then(() => {
         boat.id = key.id;
         boat.self = url + '/boats/' + key.id;
-        console.log(url);
         return boat;
     });
 }
@@ -75,7 +74,7 @@ function get_boats() {
     });
 }
 
-async function get_user_boats(req, url,  owner){
+async function get_user_boats(req, url, owner){
     const query = datastore.createQuery(BOAT).filter('owner', '=', owner).limit(5);
     const boat_url = url + '/boats';
     if(Object.keys(req.query).includes("cursor")){

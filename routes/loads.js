@@ -1,5 +1,3 @@
-const {OAuth2Client} = require('google-auth-library');
-const url = require('url');
 const express = require('express');
 const router = express.Router();
 const bodyParser = require('body-parser');
@@ -9,9 +7,6 @@ const datastore = ds.datastore;
 router.use(bodyParser.json());
 const { getURL } = require('../getURL');
 const { checkToken, getTokenOwner } = require('../oauth');
-
-//const client_id = '59733396940-3rk1q1mquia5av6f7ssq517qqotq4rnc.apps.googleusercontent.com';
-//const client = new OAuth2Client(client_id);
 
 const LOAD = "load"
 
@@ -28,18 +23,24 @@ function post_load(volume, item, creation_date, owner, url) {
     });
 }
 
+function put_load(volume, item, creation_date, load, url){
+    const key = datastore.key([LOAD, parseInt(load.id,10)]);
+    const new_load = {"volume": volume, "item": item, "creation_date": creation_date, "carrier": load.carrier, "owner": load.owner};
+    return datastore.save({"key":key, "data":new_load})
+    .then(() => {
+        new_load.id = key.id;
+        new_load.self = url + '/loads/' + key.id;
+        return new_load;
+    });
+}
+
 async function get_load(id, url) {
     let load_url = url + '/loads'
     const key = datastore.key(["load", parseInt(id, 10)]);
     return datastore.get(key).then(async (entity) => {
         if (entity[0] === undefined || entity[0] === null) {
-            // No entity found. Don't try to add the id attribute
-            return entity;
+            return entity[0];
         } else {
-            /*if (entity[0].carrier != null) {
-                let carrier = {"id":boat.id, "name":boat.name, "self":boat.self};
-                entity[0].carrier = carrier;
-            }*/
             return entity.map( function(entity) {
                 return ds.fromDatastore(entity, load_url);
             });
@@ -144,6 +145,54 @@ router.post('/', function (req, res) {
 
 });
 
+router.put('/:id', function(req, res){
+    if (req.body.volume === undefined || req.body.item === undefined || req.body.creation_date === undefined) {
+        res.status(400).json({'Error': 'The request object has an invalid or missing attribute'});
+    }
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).send('Not Acceptable');
+    }
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).send('Server only accepts application/json data.')
+    }
+
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        return;
+    }
+
+    let token = req.headers.authorization.substring(7, req.headers.authorization.length);
+
+    let ticket = checkToken(token).catch((error ) => console.error(error));
+    let load = get_load(req.params.id).catch((error) => console.error(error));
+
+    Promise.all([ticket, load]).then((values) => {
+        ticket = values[0];
+        load = values[1][0];
+        if(ticket) {
+            owner = getTokenOwner(ticket)
+            if (load === undefined || load === null) {
+                res.status(404).json({ 'Error': 'No load with this load_id exists' });
+            } 
+            else if(load.owner != owner) {
+                res.status(403).json({"Error": "You do not have permission to edit this load"});
+            }
+            else {
+                const url = getURL(req);
+                put_load(req.body.volume, req.body.item, req.body.creation_date, load, url)
+                .then((load) => {
+                    res.status(200).json(load);
+                });
+            }
+        }
+        else {
+            res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        }
+    })
+    
+});
+
 router.get('/', function(req, res) {
     if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
         res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
@@ -188,6 +237,11 @@ router.get('/:load_id', function (req, res) {
                 }
             }
         });
+});
+
+router.delete('/', function (req, res){
+    res.set('Accept', 'GET, POST');
+    res.status(405).end();
 });
 
 router.delete('/:load_id', function (req, res) {
