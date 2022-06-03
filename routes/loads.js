@@ -12,6 +12,26 @@ const LOAD = "load"
 
 /* ------------- Begin Load Model Functions ------------- */
 
+function patch_load(volume, item, creation_date, load, url){
+    if (!volume) {
+        volume = load.volume;
+    }
+    if(!item) {
+        item = load.item;
+    }
+    if (!creation_date) {
+        creation_date = load.creation_date;
+    }
+    const key = datastore.key([LOAD, parseInt(load.id,10)]);
+    let new_load = {"volume": volume, "item": item, "creation_date": creation_date, "carrier": load.carrier, "owner": load.owner};
+    return datastore.save({"key":key, "data":new_load})
+    .then(() => {
+        new_load.id = key.id;
+        new_load.self = url + '/loads/' + key.id;
+        return new_load;
+    });
+}
+
 function post_load(volume, item, creation_date, owner, url) {
     var key = datastore.key(LOAD);
     let new_load = { "volume": volume, "item": item, "creation_date": creation_date, "carrier": null, "owner": owner};
@@ -118,6 +138,55 @@ function delete_load(id) {
 /* ------------- End Load Model Functions ------------- */
 
 /* ------------- Begin Controller Functions ------------- */
+
+router.patch('/:id', function(req, res) {
+    if (req.body.volume === undefined && req.body.item === undefined && req.body.creation_date === undefined) {
+        res.status(400).json({'Error': 'The request object requires at least one attribute'})
+    }    
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).send('Not Acceptable');
+        return;
+    }
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).send('Server only accepts application/json data.');
+        return;
+    }
+
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        return;
+    }
+
+    let token = req.headers.authorization.substring(7, req.headers.authorization.length);
+    
+    let ticket = checkToken(token).catch((error ) => console.error(error));
+    let load = get_load(req.params.id).catch((error) => console.error(error));
+
+    Promise.all([ticket, load]).then((values) => {
+        ticket = values[0];
+        load = values[1][0];
+        if(ticket) {
+            owner = getTokenOwner(ticket)
+            if (load === undefined || load === null) {
+                res.status(404).json({ 'Error': 'No load with this load_id exists' });
+            } 
+            else if(load.owner != owner) {
+                res.status(403).json({"Error": "You do not have permission to edit this load"});
+            }
+            else {
+                const url = getURL(req);
+                patch_load(req.body.volume, req.body.item, req.body.creation_date, load, url)
+                .then((load) => {
+                    res.status(200).json(load);
+                });
+            }
+        }
+        else {
+            res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        }
+    })
+})
 
 router.post('/', function (req, res) {
     if (req.body.volume === undefined || req.body.item === undefined || req.body.creation_date === undefined) {
