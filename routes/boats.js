@@ -25,6 +25,26 @@ function getURL(req) {
     return url;
 }
 
+function patch_boat(name, type, length, boat_id, boat, url){
+    if (!name) {
+        name = boat.name;
+    }
+    if(!type) {
+        type = boat.type;
+    }
+    if (!length) {
+        length = boat.length;
+    }
+    const key = datastore.key([BOAT, parseInt(boat_id,10)]);
+    const new_boat = {"name": name, "type": type, "length": length, "owner": boat.owner, loads: boat.loads};
+    return datastore.save({"key":key, "data":new_boat})
+    .then(() => {
+        new_boat.id = key.id;
+        new_boat.self = url + '/boats/' + key.id;
+        return new_boat;
+    });
+}
+
 function post_boat(name, type, length, sub, url) {
     var key = datastore.key(BOAT);
     const new_boat = { "name": name, "type": type, "length": length, "owner": sub, loads: []};
@@ -36,6 +56,18 @@ function post_boat(name, type, length, sub, url) {
     });
 }
 
+function put_boat(name, type, length, boat_id, url, loads, owner){
+    const key = datastore.key([BOAT, parseInt(boat_id,10)]);
+    const boat = {"name": name, "type": type, "length": length, "loads": loads, "owner": owner};
+    return datastore.save({"key":key, "data":boat})
+    .then(() => {
+        boat.id = key.id;
+        boat.self = url + '/boats/' + key.id;
+        console.log(url);
+        return boat;
+    });
+}
+
 function get_boats() {
     const q = datastore.createQuery(BOAT);
     return datastore.runQuery(q).then((entities) => {
@@ -43,8 +75,8 @@ function get_boats() {
     });
 }
 
-async function get_user_boats(req, url,  googleID){
-    const query = datastore.createQuery(BOAT).filter('owner', '=', googleID).limit(5);
+async function get_user_boats(req, url,  owner){
+    const query = datastore.createQuery(BOAT).filter('owner', '=', owner).limit(5);
     const boat_url = url + '/boats';
     if(Object.keys(req.query).includes("cursor")){
         q = q.start(req.query.cursor);
@@ -91,7 +123,7 @@ router.get('/', function(req, res){
     let token = false;
     if (req.headers.authorization) {
         token = req.headers.authorization.substring(7, req.headers.authorization.length);
-    }
+    } 
     
     let = client.verifyIdToken({
         idToken: token,
@@ -129,6 +161,51 @@ router.get('/owners/:owner_id/boats', function(req, res){
     });
 });
 
+router.patch('/:id', function(req, res) {
+    if (req.body.name === undefined && req.body.type === undefined && req.body.length === undefined){
+        res.status(400).json({'Error': 'The request object requires at least one attribute'});
+        return;
+    }
+    
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).send('Not Acceptable');
+        return;
+    }
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).send('Server only accepts application/json data.');
+        return;
+    }
+
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        return;
+    }
+
+    let token = req.headers.authorization.substring(7, req.headers.authorization.length);
+    
+    let ticket = client.verifyIdToken({idToken: token, audience: client_id});
+    let boat = get_boat(req.params.id);
+
+    Promise.all([ticket, boat]).then((values) => {
+        ticket = values[0];
+        boat = values[1];
+        owner = ticket.getPayload().sub;
+        if (boat === undefined || boat === null) {
+            res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
+        } 
+        else if(boat.owner != owner) {
+            res.status(403).json({"Error": "You do not have permission to edit this boat"});
+        }
+        else {
+            patch_boat(req.body.name, req.body.type, req.body.length, req.params.id, boat, url)
+            .then((boat) => {
+                res.status(201).json(boat);
+            });
+        }
+    })
+})
+
 router.post('/', function(req, res){
     if(req.get('content-type') !== 'application/json'){
         res.status(415).send('Server only accepts application/json data.');
@@ -156,7 +233,6 @@ router.post('/', function(req, res){
         audience: client_id,
     }).then((ticket) => {
         const payload = ticket.getPayload();
-        console.log(payload);
         const userid = payload['sub'];
         const url = getURL(req);
         post_boat(req.body.name, req.body.type, req.body.length, userid, url)
@@ -167,6 +243,49 @@ router.post('/', function(req, res){
         return;
     });
 });
+
+
+router.put('/:id', function(req, res){
+    if (req.body.name === undefined || req.body.type === undefined || req.body.length === undefined) {
+        res.status(400).json({'Error': 'The request object has an invalid or missing attribute'});
+    }
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).send('Not Acceptable');
+    }
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).send('Server only accepts application/json data.')
+    }
+
+    let token = false;
+    if (req.headers.authorization) {
+        token = req.headers.authorization.substring(7, req.headers.authorization.length);
+    }
+
+    let ticket = client.verifyIdToken({idToken: token, audience: client_id});
+    let boat = get_boat(req.params.id);
+
+    Promise.all([ticket, boat]).then((values) => {
+        ticket = values[0];
+        boat = values[1];
+        owner = ticket.getPayload().sub;
+        if (boat === undefined || boat === null) {
+            res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
+        } 
+        else if(boat.owner != owner) {
+            res.status(403).json({"Error": "You do not have permission to edit this boat"});
+        }
+        else {
+            const url = getURL(req);
+            put_boat(req.body.name, req.body.type, req.body.length, req.params.id, url, boat.loads, owner)
+            .then((boat) => {
+                res.status(200).json(boat);
+            });
+        }
+    })
+    
+});
+
 
 router.delete('/', function (req, res){
     res.set('Accept', 'GET, POST');

@@ -4,10 +4,11 @@ const router = express.Router();
 
 const boats = require('./routes/boats');
 const users = require('./routes/users');
+const loads = require('./routes/loads');
 
 app.enable('trust proxy');
 
-
+app.use('/loads', loads);
 app.use('/boats', boats);
 app.use('/', users.router);
 
