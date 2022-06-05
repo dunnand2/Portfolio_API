@@ -193,6 +193,17 @@ router.post('/', function (req, res) {
         res.status(400).json({'Error': 'The request object is missing at least one of the required attributes'})
     }
 
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).send('Server only accepts application/json data.');
+        return;
+    }
+
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).json({"Error": " Cannot respond with requested media type"});
+        return;
+    }
+
     if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
         res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
         return;

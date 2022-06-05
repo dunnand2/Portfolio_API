@@ -119,10 +119,19 @@ function delete_boat(id){
 /* ------------- Begin Controller Functions ------------- */
 
 router.get('/', function(req, res){
-    let token = false;
-    if (req.headers.authorization) {
-        token = req.headers.authorization.substring(7, req.headers.authorization.length);
-    } 
+
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'Authorization was not provided or is invalid'});
+        return;
+    }
+
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).json({"Error": " Cannot respond with requested media type"});
+        return;
+    }
+
+    let token = req.headers.authorization.substring(7, req.headers.authorization.length);
     
     let = client.verifyIdToken({
         idToken: token,
@@ -145,21 +154,6 @@ router.get('/', function(req, res){
 
 });
 
-router.get('/owners/:owner_id/boats', function(req, res){
-    const url = getURL(req);
-    get_boats()
-	.then( (boats) => {
-        let ownedBoats = []
-        for (let boat of boats) {
-            if (boat.owner == req.params.owner_id && boat.public == true) {
-                ownedBoats.push(boat);
-            }
-            
-        }
-        res.status(200).json(ownedBoats);
-    });
-});
-
 router.patch('/:id', function(req, res) {
     if (req.body.name === undefined && req.body.type === undefined && req.body.length === undefined){
         res.status(400).json({'Error': 'The request object requires at least one attribute'});
@@ -177,7 +171,7 @@ router.patch('/:id', function(req, res) {
     }
 
     if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
-        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        res.status(401).json({'Error': 'Authorization was not provided or is invalid'});
         return;
     }
 
@@ -194,7 +188,7 @@ router.patch('/:id', function(req, res) {
             res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
         } 
         else if(boat.owner != owner) {
-            res.status(403).json({"Error": "You do not have permission to edit this boat"});
+            res.status(403).json({"Error": "You are not authorized to access this boat"});
         }
         else {
             patch_boat(req.body.name, req.body.type, req.body.length, req.params.id, boat, url)
@@ -207,12 +201,12 @@ router.patch('/:id', function(req, res) {
 
 router.post('/', function(req, res){
     if(req.get('content-type') !== 'application/json'){
-        res.status(415).send('Server only accepts application/json data.');
+        res.status(415).json({"Error": 'Server only accepts application/json data'});
         return;
     }
     const accepts = req.accepts(['application/json']);
     if (!accepts) {
-        res.status(406).send('Not Acceptable');
+        res.status(406).json({"Error": 'Cannot respond with requested media type'});
         return;
     }
     if (req.body.name === undefined || req.body.type === undefined || req.body.length === undefined) {
@@ -221,7 +215,7 @@ router.post('/', function(req, res){
     }
 
     if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
-        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        res.status(401).json({'Error': 'Authorization was not provided or is invalid'});
         return;
     }
 
@@ -238,22 +232,30 @@ router.post('/', function(req, res){
         .then(boat => {res.status(201).json(boat)});
     }).catch((error) => {
         console.error(error);
-        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        res.status(401).json({'Error': 'Authorization was not provided or is invalid'});
         return;
     });
 });
 
 
 router.put('/:id', function(req, res){
-    if (req.body.name === undefined || req.body.type === undefined || req.body.length === undefined) {
-        res.status(400).json({'Error': 'The request object has an invalid or missing attribute'});
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).json({"Error": 'Server only accepts application/json data'});
+        return;
     }
     const accepts = req.accepts(['application/json']);
     if (!accepts) {
-        res.status(406).send('Not Acceptable');
+        res.status(406).json({"Error": 'Cannot respond with requested media type'});
+        return;
     }
-    if(req.get('content-type') !== 'application/json'){
-        res.status(415).send('Server only accepts application/json data.')
+    if (req.body.name === undefined || req.body.type === undefined || req.body.length === undefined) {
+        res.status(400).json({'Error': 'The request object is missing at least one of the required attributes'});
+        return;
+    }
+
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'Authorization was not provided or is invalid'});
+        return;
     }
 
     let token = false;
@@ -272,7 +274,7 @@ router.put('/:id', function(req, res){
             res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
         } 
         else if(boat.owner != owner) {
-            res.status(403).json({"Error": "You do not have permission to edit this boat"});
+            res.status(403).json({"Error": "You are not authorized to access this boat"});
         }
         else {
             const url = getURL(req);
@@ -294,10 +296,13 @@ router.delete('/', function (req, res){
 
 router.delete('/:id', function(req, res){
 
-    let token = false;
-    if (req.headers.authorization) {
-        token = req.headers.authorization.substring(7, req.headers.authorization.length);
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'The JWT was not provided or is invalid'});
+        return;
     }
+
+    let token = req.headers.authorization.substring(7, req.headers.authorization.length);
+
 
     client.verifyIdToken({
         idToken: token,
@@ -307,8 +312,11 @@ router.delete('/:id', function(req, res){
         const owner = payload['sub'];
         get_boat(req.params.id, url)
         .then((boat) => {
-            if (boat == undefined || boat == null || boat.owner != owner) {
-                res.status(403).json({"Error": "The boat you are trying to delete does not exist or is owned by someone else."});
+            if (boat === undefined || boat === null) {
+                res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
+            } 
+            else if(boat.owner != owner) {
+                res.status(403).json({"Error": "You are not authorized to access this boat"});
             }
             else {
                 delete_boat(req.params.id).then(res.status(204).end())
