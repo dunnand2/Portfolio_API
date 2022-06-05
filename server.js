@@ -8,7 +8,7 @@ const loads = require('./routes/loads');
 
 app.enable('trust proxy');
 
-app.use('/loads', loads);
+app.use('/loads', loads.router);
 app.use('/boats', boats);
 app.use('/', users.router);
 

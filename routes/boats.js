@@ -5,7 +5,7 @@ const router = express.Router();
 const bodyParser = require('body-parser');
 const ds = require('../datastore');
 const datastore = ds.datastore;
-
+const { set_load_carrier, get_load } = require('./loads');
 router.use(bodyParser.json());
 
 const client_id = '59733396940-3rk1q1mquia5av6f7ssq517qqotq4rnc.apps.googleusercontent.com';
@@ -65,6 +65,20 @@ function put_boat(name, type, length, boat_id, url, loads, owner){
         boat.self = url + '/boats/' + key.id;
         return boat;
     });
+}
+
+function put_load_in_boat(load, boat, url){
+    const key = datastore.key(["boat", parseInt(boat.id, 10)]);
+    let loads = boat.loads;
+    loads.push(load.id);
+    let updated_boat = { "name": boat.name, "type": boat.type, "length": boat.length, "loads": loads};
+    return datastore.save({"key": key, "data":updated_boat})
+    .then(() => {
+        set_load_carrier(load, boat.id);
+        updated_boat.id = key.id;
+        boat.self = url + '/boats/' + key.id
+        return boat;
+    })
 }
 
 function get_boats() {
@@ -279,6 +293,53 @@ router.put('/:id', function(req, res){
         else {
             const url = getURL(req);
             put_boat(req.body.name, req.body.type, req.body.length, req.params.id, url, boat.loads, owner)
+            .then((boat) => {
+                res.status(200).json(boat);
+            });
+        }
+    })
+    
+});
+
+router.put('/:boat_id/loads/:load_id', function(req, res){
+    if(req.get('content-type') !== 'application/json'){
+        res.status(415).json({"Error": 'Server only accepts application/json data'});
+        return;
+    }
+    const accepts = req.accepts(['application/json']);
+    if (!accepts) {
+        res.status(406).json({"Error": 'Cannot respond with requested media type'});
+        return;
+    }
+    if(!req.headers.authorization || !req.headers.authorization.startsWith("Bearer ")) {
+        res.status(401).json({'Error': 'Authorization was not provided or is invalid'});
+        return;
+    }
+
+    let token =  req.headers.authorization.substring(7, req.headers.authorization.length);
+
+    let ticket = client.verifyIdToken({idToken: token, audience: client_id});
+    let boat = get_boat(req.params.boat_id);
+    let load = get_load(req.params.load_id)
+
+    Promise.all([ticket, boat, load]).then((values) => {
+        ticket = values[0];
+        boat = values[1];
+        load = values[2][0];
+        owner = ticket.getPayload().sub;
+        if (boat === undefined || boat === null || load === undefined || load === null) {
+            res.status(404).json({ 'Error': 'Invalid boat_id or load_id' });
+        } 
+
+        else if(boat.owner != owner || load.owner != owner) {
+            res.status(403).json({"Error": "You are not authorized to access this boat or this load"});
+        }
+        else if(load.carrier != null && load.carrier != null) {
+            res.status(403).json({"Error": "This load is already stored on another boat"})
+        }
+        else {
+            const url = getURL(req);
+            put_load_in_boat(load, boat, url)
             .then((boat) => {
                 res.status(200).json(boat);
             });

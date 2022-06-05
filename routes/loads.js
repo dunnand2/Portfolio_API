@@ -114,15 +114,10 @@ function get_loads(url, req) {
     });
 }
 
-function convert_load_carrier_json(load, boat) {
-    let carrier = {"id":boat.id, "name":boat.name, "self":boat.self};
-    load.carrier = carrier;
-    return load
-}
 
 // Sets the carrier parameter for a load object
-function set_load_carrier(load, load_id, boat_id) {
-    const key = datastore.key(["load", parseInt(load_id, 10)]);
+function set_load_carrier(load, boat_id) {
+    const key = datastore.key(["load", parseInt(load.id, 10)]);
     let updated_load = { "volume": load.volume, "item": load.item, "creation_date": load.creation_date, "carrier": boat_id};
     return datastore.save({'key': key, "data": updated_load})
     .then(() => {
@@ -340,4 +335,9 @@ router.delete('/:load_id', function (req, res) {
 
 /* ------------- End Controller Functions ------------- */
 
-module.exports = router ;
+module.exports = {
+    router: router, 
+    checkToken: checkToken,
+    set_load_carrier: set_load_carrier,
+    get_load: get_load
+};
